@@ -1,9 +1,12 @@
 #include <limits.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
 #include <unistd.h>
+
+#define TABLE_SIZE 50000
 
 struct Metadata {
     float min;
@@ -15,16 +18,29 @@ struct Metadata {
 struct Entry {
     char key[100];
     struct Metadata value;
+    bool free;
 };
 
-struct Entry* get_entry(struct Entry table[], const char* key, int size) {
-    for (int i = 0; i < size; ++i) {
-        if (!strcmp(key, table[i].key)) {
-            return &table[i];
+int hash(const char* key) {
+    int hash = 31;
+    for (int i = 0; i < strlen(key); ++i) {
+        hash = 31 * hash + key[i];
+    }
+    return hash % TABLE_SIZE;
+}
+
+struct Entry* get_entry(struct Entry table[], const char* key) {
+    int index = hash(key);
+    while (!table[index].free) {
+        if (strcmp(key, table[index].key) == 0) {
+            return &table[index];
+        }
+        ++index;
+        if (index >= TABLE_SIZE) {
+            index = 0;
         }
     }
-
-    return NULL;
+    return &table[index];
 }
 
 int compare_entries(const void* a, const void* b) {
@@ -37,23 +53,25 @@ int main(int argc, char* argv[]) {
     FILE* file = fopen("../measurements.txt", "r");
 
     char line[107];
-    struct Entry table[10000];
-    int table_size = 0;
+    struct Entry table[TABLE_SIZE];
+    for (int i = 0; i < TABLE_SIZE; ++i) {
+        table[i].key[0] = '\0';
+        table[i].free = true;
+    }
 
     while (fgets(line, sizeof(line), file)) {
         char* station = strtok(line, ";");
         char* temperature = strtok(NULL, "\n");
         float f = strtof(temperature, NULL);
 
-        struct Entry* entry = get_entry(table, station, table_size);
-        if (!entry) {
-            struct Entry* newEntry = &table[table_size++];
-            newEntry->value.min = 99.9;
-            newEntry->value.sum = 0.0;
-            newEntry->value.max = -99.9;
-            newEntry->value.count = 0;
-            strcpy(newEntry->key, station);
-            entry = newEntry;
+        struct Entry* entry = get_entry(table, station);
+        if (entry->free) {
+            entry->value.min = 99.9;
+            entry->value.sum = 0.0;
+            entry->value.max = -99.9;
+            entry->value.count = 0;
+            strcpy(entry->key, station);
+            entry->free = false;
         }
 
         entry->value.min = MIN(entry->value.min, f);
@@ -62,12 +80,14 @@ int main(int argc, char* argv[]) {
         ++entry->value.count;
     }
 
-    qsort(table, table_size, sizeof(struct Entry), compare_entries);
+    qsort(table, TABLE_SIZE, sizeof(struct Entry), compare_entries);
     printf("{");
-    for (int i = 0; i < table_size; ++i) {
-        printf("%s=%.1f/%.1f/%.1f%s", table[i].key, table[i].value.min,
-               table[i].value.sum / table[i].value.count, table[i].value.max,
-               i < table_size - 1 ? ", " : "");
+    for (int i = 0; i < TABLE_SIZE; ++i) {
+        if (!table[i].free) {
+            printf("%s=%.1f/%.1f/%.1f, ", table[i].key, table[i].value.min,
+                   table[i].value.sum / table[i].value.count,
+                   table[i].value.max);
+        }
     }
     printf("}\n");
     return 0;
