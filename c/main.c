@@ -1,9 +1,11 @@
-#include <limits.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/param.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define TABLE_SIZE 50000
@@ -50,7 +52,11 @@ int compare_entries(const void* a, const void* b) {
 }
 
 int main(int argc, char* argv[]) {
-    FILE* file = fopen("../measurements.txt", "r");
+    int fd = open("../measurements.txt", O_RDONLY);
+    struct stat fs;
+    fstat(fd, &fs);
+    char* bytes = mmap(NULL, fs.st_size, PROT_READ, MAP_SHARED, fd, 0);
+    madvise(bytes, fs.st_size, MADV_SEQUENTIAL);
 
     char line[107];
     struct Entry table[TABLE_SIZE];
@@ -59,7 +65,13 @@ int main(int argc, char* argv[]) {
         table[i].free = true;
     }
 
-    while (fgets(line, sizeof(line), file)) {
+    char* line_start = bytes;
+    char* line_end;
+    size_t remaining_bytes = fs.st_size;
+    while ((line_end = memchr(line_start, '\n', remaining_bytes))) {
+        memcpy(line, line_start, line_end - line_start);
+        remaining_bytes -= line_end + 1 - line_start;
+        line_start = line_end + 1;
         char* station = strtok(line, ";");
         char* temperature = strtok(NULL, "\n");
         float f = strtof(temperature, NULL);
