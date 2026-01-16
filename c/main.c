@@ -12,10 +12,10 @@
 #define TABLE_SIZE 50000
 
 struct Metadata {
-    long min;
-    long sum;
-    long max;
-    unsigned int count;
+    long long sum;
+    unsigned count;
+    short min;
+    short max;
 };
 
 struct Entry {
