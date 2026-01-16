@@ -8,12 +8,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <limits.h>
+
 #define TABLE_SIZE 50000
 
 struct Metadata {
-    float min;
-    float sum;
-    float max;
+    long min;
+    long sum;
+    long max;
     unsigned int count;
 };
 
@@ -51,6 +53,24 @@ int compare_entries(const void* a, const void* b) {
     return strcmp(arg1.key, arg2.key);
 }
 
+long parse_temperature(char* temperature) {
+    long product = 0;
+    int sign = temperature[0] == '-' ? -1 : 1;
+
+    int index = temperature[0] == '-' ? 1 : 0;
+    product = product * 10 + (temperature[index++] - '0');
+    
+    index = temperature[index] == '.' ? index + 1 : index;
+    product = product * 10 + (temperature[index++] - '0');
+    
+    bool has_decimal = temperature[index] == '.';
+    int digit = has_decimal ? temperature[index + 1] - '0' : 0;
+    int multiplier = has_decimal ? 10 : 1;
+    product = product * multiplier + digit;
+
+    return product * sign;
+}
+
 int main(int argc, char* argv[]) {
     int fd = open("../measurements.txt", O_RDONLY);
     struct stat fs;
@@ -74,7 +94,7 @@ int main(int argc, char* argv[]) {
         line_start = line_end + 1;
         char* station = strtok(line, ";");
         char* temperature = strtok(NULL, "\n");
-        float f = strtof(temperature, NULL);
+        long f = parse_temperature(temperature);
 
         struct Entry* entry = get_entry(table, station);
         if (entry->free) {
@@ -96,9 +116,9 @@ int main(int argc, char* argv[]) {
     printf("{");
     for (int i = 0; i < TABLE_SIZE; ++i) {
         if (!table[i].free) {
-            printf("%s=%.1f/%.1f/%.1f, ", table[i].key, table[i].value.min,
-                   table[i].value.sum / table[i].value.count,
-                   table[i].value.max);
+            printf("%s=%.1f/%.1f/%.1f, ", table[i].key, table[i].value.min / 10.0,
+                   table[i].value.sum /10.0 / table[i].value.count,
+                   table[i].value.max / 10.0);
         }
     }
     printf("}\n");
