@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,10 +14,10 @@
 #define TABLE_SIZE 50000
 
 struct Metadata {
-    long long sum;
-    unsigned count;
-    short min;
-    short max;
+    int64_t sum;
+    uint32_t count;
+    int16_t min;
+    int16_t max;
 };
 
 struct Entry {
@@ -54,7 +55,7 @@ int compare_entries(const void* a, const void* b) {
 }
 
 char* parse_station(char* c, char* station) {
-    int index = 0;
+    uint8_t index = 0;
     while (*c != ';') {
         station[index++] = *c++;
     }
@@ -62,9 +63,9 @@ char* parse_station(char* c, char* station) {
     return c + 1;
 }
 
-char* parse_temperature(char* c, short* temperature) {
+char* parse_temperature(char* c, int16_t* temperature) {
     *temperature = 0;
-    short sign = 1;
+    int8_t sign = 1;
 
     if (*c == '-') {
         sign = -1;
@@ -92,7 +93,7 @@ int main() {
     madvise(bytes, fs.st_size, MADV_SEQUENTIAL);
 
     char station[100];
-    short temperature;
+    int16_t temperature;
     struct Entry table[TABLE_SIZE];
     for (int i = 0; i < TABLE_SIZE; ++i) {
         table[i].key[0] = '\0';
