@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <fcntl.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -26,7 +27,7 @@ struct Entry {
 
 int hash(const char* key) {
     int hash = 31;
-    for (int i = 0; i < strlen(key); ++i) {
+    for (unsigned i = 0; i < strlen(key); ++i) {
         hash = 31 * hash + key[i];
     }
     return hash % TABLE_SIZE;
@@ -79,7 +80,7 @@ long parse_temperature(char* temperature) {
     return product * sign;
 }
 
-int main(int argc, char* argv[]) {
+int main() {
     int fd = open("../measurements.txt", O_RDONLY);
     struct stat fs;
     fstat(fd, &fs);
