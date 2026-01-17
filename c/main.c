@@ -27,8 +27,8 @@ struct Entry {
 
 int hash(const char* key) {
     int hash = 31;
-    for (unsigned i = 0; i < strlen(key); ++i) {
-        hash = 31 * hash + key[i];
+    while (*key) {
+        hash = 31 * hash + *key++;
     }
     return hash % TABLE_SIZE;
 }
