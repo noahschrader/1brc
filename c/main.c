@@ -62,22 +62,25 @@ char* parse_station(char* c, char* station) {
     return c + 1;
 }
 
-long parse_temperature(char* temperature) {
-    long product = 0;
-    int sign = temperature[0] == '-' ? -1 : 1;
+char* parse_temperature(char* c, short* temperature) {
+    *temperature = 0;
+    short sign = 1;
 
-    int index = temperature[0] == '-' ? 1 : 0;
-    product = product * 10 + (temperature[index++] - '0');
+    if (*c == '-') {
+        sign = -1;
+        c++;
+    }
 
-    index = temperature[index] == '.' ? index + 1 : index;
-    product = product * 10 + (temperature[index++] - '0');
+    if (c[1] == '.') {
+        *temperature = (c[0] - '0') * 10 + (c[2] - '0');
+        c += 4;
+    } else {
+        *temperature = (c[0] - '0') * 100 + (c[1] - '0') * 10 + (c[3] - '0');
+        c += 5;
+    }
 
-    bool has_decimal = temperature[index] == '.';
-    int digit = has_decimal ? temperature[index + 1] - '0' : 0;
-    int multiplier = has_decimal ? 10 : 1;
-    product = product * multiplier + digit;
-
-    return product * sign;
+    *temperature *= sign;
+    return c;
 }
 
 int main() {
@@ -89,6 +92,7 @@ int main() {
     madvise(bytes, fs.st_size, MADV_SEQUENTIAL);
 
     char station[100];
+    short temperature;
     struct Entry table[TABLE_SIZE];
     for (int i = 0; i < TABLE_SIZE; ++i) {
         table[i].key[0] = '\0';
@@ -98,12 +102,7 @@ int main() {
     char* c = bytes;
     while (c != end_of_file) {
         c = parse_station(c, station);
-        long temperature = parse_temperature(c);
-
-        while (*c != '\n') {
-            ++c;
-        }
-        ++c;
+        c = parse_temperature(c, &temperature);
 
         struct Entry* entry = get_entry(table, station);
         if (entry->free) {
