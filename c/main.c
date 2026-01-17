@@ -64,24 +64,27 @@ char* parse_station(char* c, char* station) {
 }
 
 char* parse_temperature(char* c, int16_t* temperature) {
-    *temperature = 0;
-    int8_t sign = 1;
+    uint64_t word = *(uint64_t*)c;
+    bool is_negative = (word & 0xFF) == '-';
+    word >>= is_negative * 8;
 
-    if (*c == '-') {
-        sign = -1;
-        c++;
-    }
+    char byte0 = (word >> 0) & 0xFF;
+    char byte1 = (word >> 8) & 0xFF;
+    char byte2 = (word >> 16) & 0xFF;
+    char byte3 = (word >> 24) & 0xFF;
 
-    if (c[1] == '.') {
-        *temperature = (c[0] - '0') * 10 + (c[2] - '0');
-        c += 4;
-    } else {
-        *temperature = (c[0] - '0') * 100 + (c[1] - '0') * 10 + (c[3] - '0');
-        c += 5;
-    }
+    bool is_short = byte1 == '.';
+    int16_t temperature_short = (byte0 - '0') * 10 + (byte2 - '0');
+    int16_t temperature_long =
+        (byte0 - '0') * 100 + (byte1 - '0') * 10 + (byte3 - '0');
 
-    *temperature *= sign;
-    return c;
+    int16_t result =
+        is_short * temperature_short + (1 - is_short) * temperature_long;
+    result = (result ^ -is_negative) + is_negative;
+    *temperature = result;
+
+    uint8_t length = 3 + (1 - is_short) + is_negative;
+    return c + length + 1;
 }
 
 int main() {
