@@ -24,7 +24,6 @@ struct Metadata {
 struct Entry {
     char key[100];
     struct Metadata value;
-    bool free;
 };
 
 int hash(const char* key) {
@@ -37,7 +36,7 @@ int hash(const char* key) {
 
 struct Entry* get_entry(struct Entry table[], const char* key) {
     int index = hash(key);
-    while (!table[index].free) {
+    while (table[index].key[0] != '\0') {
         if (strcmp(key, table[index].key) == 0) {
             return &table[index];
         }
@@ -111,7 +110,6 @@ int main() {
     struct Entry table[TABLE_SIZE];
     for (int i = 0; i < TABLE_SIZE; ++i) {
         table[i].key[0] = '\0';
-        table[i].free = true;
     }
 
     char* c = bytes;
@@ -120,13 +118,12 @@ int main() {
         c = parse_temperature(c, &temperature);
 
         struct Entry* entry = get_entry(table, station);
-        if (entry->free) {
+        if (entry->key[0] == '\0') {
             entry->value.min = 999;
             entry->value.sum = 0.0;
             entry->value.max = -999;
             entry->value.count = 0;
             strcpy(entry->key, station);
-            entry->free = false;
         }
 
         entry->value.min = MIN(entry->value.min, temperature);
@@ -138,7 +135,7 @@ int main() {
     qsort(table, TABLE_SIZE, sizeof(struct Entry), compare_entries);
     printf("{");
     for (int i = 0; i < TABLE_SIZE; ++i) {
-        if (!table[i].free) {
+        if (table[i].key[0] != '\0') {
             printf("%s=%.1f/%.1f/%.1f, ", table[i].key,
                    table[i].value.min / 10.0,
                    table[i].value.sum / 10.0 / table[i].value.count,
