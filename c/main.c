@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <fcntl.h>
+#include <immintrin.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -55,12 +56,22 @@ int compare_entries(const void* a, const void* b) {
 }
 
 char* parse_station(char* c, char* station) {
-    uint8_t index = 0;
-    while (*c != ';') {
-        station[index++] = *c++;
+    __m256i semicolons = _mm256_set1_epi8(';');
+    uint32_t mask = 0;
+    int16_t length = 0;
+    while (!mask) {
+        __m256i chunk = _mm256_loadu_si256((__m256i*)(c + length));
+        __m256i cmp = _mm256_cmpeq_epi8(chunk, semicolons);
+        mask = _mm256_movemask_epi8(cmp);
+        length += 32;
     }
-    station[index] = '\0';
-    return c + 1;
+
+    uint8_t tailing_zeros = __builtin_ctz(mask);
+    length += tailing_zeros - 32;
+    memcpy(station, c, length);
+    station[length] = '\0';
+
+    return c + length + 1;
 }
 
 char* parse_temperature(char* c, int16_t* temperature) {
