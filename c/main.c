@@ -12,6 +12,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "string.h"
+
 #define TABLE_SIZE 50000
 
 struct Metadata {
@@ -22,22 +24,28 @@ struct Metadata {
 };
 
 struct Entry {
-    char key[100];
+    struct String key;
     struct Metadata value;
 };
 
-int hash(const char* key) {
+int hash(const char* key, uint8_t length) {
     int hash = 31;
-    while (*key) {
+    while (length--) {
         hash = 31 * hash + *key++;
     }
     return hash % TABLE_SIZE;
 }
 
-struct Entry* get_entry(struct Entry table[], const char* key) {
-    int index = hash(key);
-    while (table[index].key[0] != '\0') {
-        if (strcmp(key, table[index].key) == 0) {
+bool key_equals(const struct String* key1, const struct String* key2) {
+    return string_length(key1) == string_length(key2) &&
+           memcmp(string_data(key1), string_data(key2), string_length(key1)) ==
+               0;
+}
+
+struct Entry* get_entry(struct Entry table[], const struct String* key) {
+    int index = hash(string_data(key), string_length(key));
+    while (!string_is_empty(&table[index].key)) {
+        if (key_equals(&table[index].key, key)) {
             return &table[index];
         }
         ++index;
@@ -51,10 +59,12 @@ struct Entry* get_entry(struct Entry table[], const char* key) {
 int compare_entries(const void* a, const void* b) {
     struct Entry arg1 = *(const struct Entry*)a;
     struct Entry arg2 = *(const struct Entry*)b;
-    return strcmp(arg1.key, arg2.key);
+    int length = MIN(string_length(&arg1.key), string_length(&arg2.key));
+    int cmp = memcmp(string_data(&arg1.key), string_data(&arg2.key), length);
+    return cmp != 0 ? cmp : string_length(&arg1.key) - string_length(&arg2.key);
 }
 
-char* parse_station(char* c, char* station) {
+char* parse_station(char* c, struct String* key) {
     __m256i semicolons = _mm256_set1_epi8(';');
     uint32_t mask = 0;
     int16_t length = 0;
@@ -67,8 +77,7 @@ char* parse_station(char* c, char* station) {
 
     uint8_t tailing_zeros = __builtin_ctz(mask);
     length += tailing_zeros - 32;
-    memcpy(station, c, length);
-    station[length] = '\0';
+    string_new(key, c, length);
 
     return c + length + 1;
 }
@@ -105,25 +114,25 @@ int main() {
     char* end_of_file = bytes + fs.st_size;
     madvise(bytes, fs.st_size, MADV_SEQUENTIAL);
 
-    char station[100];
+    struct String station;
     int16_t temperature;
     struct Entry table[TABLE_SIZE];
     for (int i = 0; i < TABLE_SIZE; ++i) {
-        table[i].key[0] = '\0';
+        string_new(&table[i].key, "", 0);
     }
 
     char* c = bytes;
     while (c != end_of_file) {
-        c = parse_station(c, station);
+        c = parse_station(c, &station);
         c = parse_temperature(c, &temperature);
 
-        struct Entry* entry = get_entry(table, station);
-        if (entry->key[0] == '\0') {
+        struct Entry* entry = get_entry(table, &station);
+        if (string_is_empty(&entry->key)) {
             entry->value.min = 999;
             entry->value.sum = 0.0;
             entry->value.max = -999;
             entry->value.count = 0;
-            strcpy(entry->key, station);
+            string_new(&entry->key, string_data(&station), string_length(&station));
         }
 
         entry->value.min = MIN(entry->value.min, temperature);
@@ -135,9 +144,9 @@ int main() {
     qsort(table, TABLE_SIZE, sizeof(struct Entry), compare_entries);
     printf("{");
     for (int i = 0; i < TABLE_SIZE; ++i) {
-        if (table[i].key[0] != '\0') {
-            printf("%s=%.1f/%.1f/%.1f, ", table[i].key,
-                   table[i].value.min / 10.0,
+        if (!string_is_empty(&table[i].key)) {
+            printf("%.*s=%.1f/%.1f/%.1f, ", string_length(&table[i].key),
+                   string_data(&table[i].key), table[i].value.min / 10.0,
                    table[i].value.sum / 10.0 / table[i].value.count,
                    table[i].value.max / 10.0);
         }
