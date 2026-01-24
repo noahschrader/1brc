@@ -14,7 +14,7 @@
 
 #include "string.h"
 
-#define TABLE_SIZE 50000
+#define TABLE_SIZE 65536
 
 struct Metadata {
     int64_t sum;
@@ -28,12 +28,12 @@ struct Entry {
     struct Metadata value;
 };
 
-int hash(const char* key, uint8_t length) {
-    int hash = 31;
+uint32_t hash(const char* key, uint8_t length) {
+    uint32_t hash = 31;
     while (length--) {
         hash = 31 * hash + *key++;
     }
-    return hash % TABLE_SIZE;
+    return hash & (TABLE_SIZE - 1);
 }
 
 bool key_equals(const struct String* key1, const struct String* key2) {
