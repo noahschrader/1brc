@@ -29,11 +29,25 @@ struct Entry {
 };
 
 uint32_t hash(const char* key, uint8_t length) {
-    uint32_t hash = 31;
-    while (length--) {
-        hash = 31 * hash + *key++;
+    static const uint64_t masks[9] = {
+        0x0000000000000000, 0x00000000000000FF, 0x000000000000FFFF,
+        0x0000000000FFFFFF, 0x00000000FFFFFFFF, 0x000000FFFFFFFFFF,
+        0x0000FFFFFFFFFFFF, 0x00FFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    };
+    uint32_t hash = length;
+    uint64_t* data = (uint64_t*)key;
+    uint8_t len1 = length >= 8 ? 8 : length;
+    uint8_t len2 = length > 8 ? (length >= 16 ? 8 : length - 8) : 0;
+    uint64_t d1 = data[0] & masks[len1];
+    uint64_t d2 = data[1] & masks[len2];
+    hash = _mm_crc32_u64(hash, d1);
+    hash = _mm_crc32_u64(hash, d2);
+    if (__builtin_expect(length > 16, 0)) {
+        for (int i = 16; i < length; ++i) {
+            hash = _mm_crc32_u8(hash, key[i]);
+        }
     }
-    return hash & (TABLE_SIZE - 1);
+    return hash;
 }
 
 bool key_equals(const struct String* key1, const struct String* key2) {
@@ -43,15 +57,12 @@ bool key_equals(const struct String* key1, const struct String* key2) {
 }
 
 struct Entry* get_entry(struct Entry table[], const struct String* key) {
-    int index = hash(string_data(key), string_length(key));
+    int index = hash(string_data(key), string_length(key)) & (TABLE_SIZE - 1);
     while (!string_is_empty(&table[index].key)) {
         if (key_equals(&table[index].key, key)) {
             return &table[index];
         }
-        ++index;
-        if (index >= TABLE_SIZE) {
-            index = 0;
-        }
+        index = (index + 1) & (TABLE_SIZE - 1);
     }
     return &table[index];
 }
@@ -132,7 +143,8 @@ int main() {
             entry->value.sum = 0.0;
             entry->value.max = -999;
             entry->value.count = 0;
-            string_new(&entry->key, string_data(&station), string_length(&station));
+            string_new(&entry->key, string_data(&station),
+                       string_length(&station));
         }
 
         entry->value.min = MIN(entry->value.min, temperature);
