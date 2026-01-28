@@ -16,16 +16,15 @@
 
 #define TABLE_SIZE 65536
 
-struct Metadata {
+struct Entry {
+    char* key;
     int64_t sum;
     uint32_t count;
+    uint32_t hash;
     int16_t min;
     int16_t max;
-};
-
-struct Entry {
-    struct String key;
-    struct Metadata value;
+    uint8_t key_length;
+    uint8_t _pad[3];
 };
 
 uint32_t hash(const char* key, uint8_t length) {
@@ -50,16 +49,16 @@ uint32_t hash(const char* key, uint8_t length) {
     return hash;
 }
 
-bool key_equals(const struct String* key1, const struct String* key2) {
-    return string_length(key1) == string_length(key2) &&
-           memcmp(string_data(key1), string_data(key2), string_length(key1)) ==
-               0;
+bool key_equals(const char* key1, uint8_t key1_length, const char* key2,
+                uint8_t key2_length) {
+    return key1_length == key2_length && memcmp(key1, key2, key1_length) == 0;
 }
 
-struct Entry* get_entry(struct Entry table[], const struct String* key) {
-    int index = hash(string_data(key), string_length(key)) & (TABLE_SIZE - 1);
-    while (!string_is_empty(&table[index].key)) {
-        if (key_equals(&table[index].key, key)) {
+struct Entry* get_entry(struct Entry table[], const char* key, uint8_t length) {
+    int index = hash(key, length) & (TABLE_SIZE - 1);
+    while (table[index].key != NULL) {
+        if (key_equals(table[index].key, table[index].key_length, key,
+                       length)) {
             return &table[index];
         }
         index = (index + 1) & (TABLE_SIZE - 1);
@@ -70,12 +69,15 @@ struct Entry* get_entry(struct Entry table[], const struct String* key) {
 int compare_entries(const void* a, const void* b) {
     struct Entry arg1 = *(const struct Entry*)a;
     struct Entry arg2 = *(const struct Entry*)b;
-    int length = MIN(string_length(&arg1.key), string_length(&arg2.key));
-    int cmp = memcmp(string_data(&arg1.key), string_data(&arg2.key), length);
-    return cmp != 0 ? cmp : string_length(&arg1.key) - string_length(&arg2.key);
+    if (arg1.key == NULL || arg2.key == NULL) {
+        return -1;
+    }
+    int length = MIN(arg1.key_length, arg2.key_length);
+    int cmp = memcmp(arg1.key, arg2.key, length);
+    return cmp != 0 ? cmp : arg1.key_length - arg2.key_length;
 }
 
-char* parse_station(char* c, struct String* key) {
+char* parse_station(char* c, char** key, uint8_t* key_length) {
     __m256i semicolons = _mm256_set1_epi8(';');
     uint32_t mask = 0;
     int16_t length = 0;
@@ -88,7 +90,8 @@ char* parse_station(char* c, struct String* key) {
 
     uint8_t tailing_zeros = __builtin_ctz(mask);
     length += tailing_zeros - 32;
-    string_new(key, c, length);
+    *key = c;
+    *key_length = length;
 
     return c + length + 1;
 }
@@ -125,42 +128,42 @@ int main() {
     char* end_of_file = bytes + fs.st_size;
     madvise(bytes, fs.st_size, MADV_SEQUENTIAL);
 
-    struct String station;
+    char* station;
+    uint8_t length;
     int16_t temperature;
     struct Entry table[TABLE_SIZE];
     for (int i = 0; i < TABLE_SIZE; ++i) {
-        string_new(&table[i].key, "", 0);
+        table[i].key = NULL;
     }
 
     char* c = bytes;
     while (c != end_of_file) {
-        c = parse_station(c, &station);
+        c = parse_station(c, &station, &length);
         c = parse_temperature(c, &temperature);
 
-        struct Entry* entry = get_entry(table, &station);
-        if (string_is_empty(&entry->key)) {
-            entry->value.min = 999;
-            entry->value.sum = 0.0;
-            entry->value.max = -999;
-            entry->value.count = 0;
-            string_new(&entry->key, string_data(&station),
-                       string_length(&station));
+        struct Entry* entry = get_entry(table, station, length);
+        if (entry->key == NULL) {
+            entry->min = 999;
+            entry->sum = 0.0;
+            entry->max = -999;
+            entry->count = 0;
+            entry->key = station;
+            entry->key_length = length;
         }
 
-        entry->value.min = MIN(entry->value.min, temperature);
-        entry->value.sum += temperature;
-        entry->value.max = MAX(entry->value.max, temperature);
-        ++entry->value.count;
+        entry->min = MIN(entry->min, temperature);
+        entry->sum += temperature;
+        entry->max = MAX(entry->max, temperature);
+        ++entry->count;
     }
 
     qsort(table, TABLE_SIZE, sizeof(struct Entry), compare_entries);
     printf("{");
     for (int i = 0; i < TABLE_SIZE; ++i) {
-        if (!string_is_empty(&table[i].key)) {
-            printf("%.*s=%.1f/%.1f/%.1f, ", string_length(&table[i].key),
-                   string_data(&table[i].key), table[i].value.min / 10.0,
-                   table[i].value.sum / 10.0 / table[i].value.count,
-                   table[i].value.max / 10.0);
+        if (table[i].key != NULL) {
+            printf("%.*s=%.1f/%.1f/%.1f, ", table[i].key_length, table[i].key,
+                   table[i].min / 10.0, table[i].sum / 10.0 / table[i].count,
+                   table[i].max / 10.0);
         }
     }
     printf("}\n");
