@@ -153,7 +153,7 @@ char* get_next_line(char* c) {
 }
 
 int main() {
-    int fd = open("../measurements.txt", O_RDONLY);
+    int fd = open("measurements.txt", O_RDONLY);
     struct stat fs;
     fstat(fd, &fs);
     char* bytes = mmap(NULL, fs.st_size, PROT_READ, MAP_SHARED, fd, 0);
