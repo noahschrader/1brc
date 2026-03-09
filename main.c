@@ -12,8 +12,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "string.h"
-
 #define TABLE_SIZE 65536
 #define NUM_CHUNKS 4
 
@@ -55,8 +53,8 @@ bool key_equals(const char* key1, uint8_t key1_length, const char* key2,
     return key1_length == key2_length && memcmp(key1, key2, key1_length) == 0;
 }
 
-struct Entry* get_entry(struct Entry table[], const char* key, uint8_t length) {
-    int index = hash(key, length) & (TABLE_SIZE - 1);
+struct Entry* get_entry(struct Entry table[], const char* key, uint8_t length, uint32_t hash) {
+    int index = hash & (TABLE_SIZE - 1);
     while (table[index].key != NULL) {
         if (key_equals(table[index].key, table[index].key_length, key,
                        length)) {
@@ -156,9 +154,9 @@ int main() {
     int fd = open("measurements.txt", O_RDONLY);
     struct stat fs;
     fstat(fd, &fs);
-    char* bytes = mmap(NULL, fs.st_size, PROT_READ, MAP_SHARED, fd, 0);
+    char* bytes = mmap(NULL, fs.st_size, PROT_READ, MAP_SHARED | MAP_POPULATE, fd, 0);
     char* end_of_file = bytes + fs.st_size;
-    madvise(bytes, fs.st_size, MADV_SEQUENTIAL);
+    madvise(bytes, fs.st_size, MADV_SEQUENTIAL | MADV_HUGEPAGE);
 
     struct Entry table[TABLE_SIZE];
     for (int i = 0; i < TABLE_SIZE; ++i) {
