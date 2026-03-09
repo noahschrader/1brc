@@ -187,15 +187,24 @@ int main() {
         char* tp2 = parse_station(chunk_start[2], &station2, &length2);
         char* tp3 = parse_station(chunk_start[3], &station3, &length3);
 
+        uint32_t h0 = hash(station0, length0);
+        uint32_t h1 = hash(station1, length1);
+        uint32_t h2 = hash(station2, length2);
+        uint32_t h3 = hash(station3, length3);
+        __builtin_prefetch(&table[h0 & (TABLE_SIZE - 1)], 1, 3);
+        __builtin_prefetch(&table[h1 & (TABLE_SIZE - 1)], 1, 3);
+        __builtin_prefetch(&table[h2 & (TABLE_SIZE - 1)], 1, 3);
+        __builtin_prefetch(&table[h3 & (TABLE_SIZE - 1)], 1, 3);
+
         chunk_start[0] = parse_temperature(tp0, &temperature0);
         chunk_start[1] = parse_temperature(tp1, &temperature1);
         chunk_start[2] = parse_temperature(tp2, &temperature2);
         chunk_start[3] = parse_temperature(tp3, &temperature3);
 
-        struct Entry* e0 = get_entry(table, station0, length0);
-        struct Entry* e1 = get_entry(table, station1, length1);
-        struct Entry* e2 = get_entry(table, station2, length2);
-        struct Entry* e3 = get_entry(table, station3, length3);
+        struct Entry* e0 = get_entry(table, station0, length0, h0);
+        struct Entry* e1 = get_entry(table, station1, length1, h1);
+        struct Entry* e2 = get_entry(table, station2, length2, h2);
+        struct Entry* e3 = get_entry(table, station3, length3, h3);
 
         update_entry(e0, station0, length0, temperature0);
         update_entry(e1, station1, length1, temperature1);
@@ -210,9 +219,13 @@ int main() {
             int16_t temperature;
 
             chunk_start[i] = parse_station(chunk_start[i], &station, &length);
+
+            uint32_t h = hash(station, length);
+            __builtin_prefetch(&table[h & (TABLE_SIZE - 1)], 1, 3);
+
             chunk_start[i] = parse_temperature(chunk_start[i], &temperature);
 
-            struct Entry* entry = get_entry(table, station, length);
+            struct Entry* entry = get_entry(table, station, length, h);
             update_entry(entry, station, length, temperature);
         }
     }
